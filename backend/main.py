@@ -24,10 +24,21 @@ app.add_middleware(
 
 class AnalysisResponse(BaseModel):
     summary: str
-    highlights: list[str]
-    what_to_do: list[str]
-    important_dates: list[str]
+    highlights: list
+    what_to_do: list
+    important_dates: list
     email_prompt: Optional[str] = None
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "summary": "This is a sample letter summary",
+                "highlights": ["Important point 1", "Important point 2"],
+                "what_to_do": ["Action 1", "Action 2"],
+                "important_dates": ["2024-01-01: Due date"],
+                "email_prompt": "Would you like me to write an email to someone@example.com?"
+            }
+        }
 
 @app.get("/")
 async def root():
