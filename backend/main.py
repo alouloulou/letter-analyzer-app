@@ -6,7 +6,7 @@ import base64
 import os
 from dotenv import load_dotenv
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 
 # Load environment variables
 load_dotenv()
@@ -24,21 +24,24 @@ app.add_middleware(
 
 class AnalysisResponse(BaseModel):
     summary: str
-    highlights: list
-    what_to_do: list
-    important_dates: list
+    highlights: List[str]
+    what_to_do: List[str]
+    important_dates: List[str]
     email_prompt: Optional[str] = None
 
-    class Config:
-        schema_extra = {
-            "example": {
-                "summary": "This is a sample letter summary",
-                "highlights": ["Important point 1", "Important point 2"],
-                "what_to_do": ["Action 1", "Action 2"],
-                "important_dates": ["2024-01-01: Due date"],
-                "email_prompt": "Would you like me to write an email to someone@example.com?"
-            }
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "summary": "This is a sample letter summary",
+                    "highlights": ["Important point 1", "Important point 2"],
+                    "what_to_do": ["Action 1", "Action 2"],
+                    "important_dates": ["2024-01-01: Due date"],
+                    "email_prompt": "Would you like me to write an email to someone@example.com?"
+                }
+            ]
         }
+    }
 
 @app.get("/")
 async def root():
