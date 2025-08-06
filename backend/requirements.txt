@@ -1,10 +1,6 @@
-# Your original working dependencies
-fastapi==0.104.1
-uvicorn==0.24.0
-requests==2.31.0
-python-multipart==0.0.6
-python-dotenv==1.0.0
-pydantic==2.5.0
-
-# Additional production-safe dependencies
-gunicorn==21.2.0
+fastapi==0.88.0
+uvicorn==0.20.0
+requests==2.28.1
+python-multipart==0.0.5
+python-dotenv==0.21.0
+pydantic==1.10.2 

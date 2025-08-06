@@ -4,37 +4,21 @@ import requests
 import json
 import base64
 import os
-import logging
-from datetime import datetime
-from typing import Optional, List
 from dotenv import load_dotenv
 from pydantic import BaseModel
+from typing import Optional, List
 
 # Load environment variables
 load_dotenv()
 
-# Configure basic logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+app = FastAPI(title="Letter Analyzer API", version="1.0.0")
 
-# Configuration
-class Config:
-    OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-    SITE_URL = os.getenv("OPENROUTER_SITE_URL", "https://letter-analyzer.vercel.app")
-    SITE_NAME = os.getenv("OPENROUTER_SITE_NAME", "Letter Analyzer")
-    ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,https://your-frontend-domain.com").split(",")
-    MAX_FILE_SIZE = int(os.getenv("MAX_FILE_SIZE", "10485760"))  # 10MB
-
-config = Config()
-
-app = FastAPI(
-    title="Letter Analyzer API",
-# Add CORS middleware with production settings
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=config.ALLOWED_ORIGINS,  # Restrict to specific domains
+    allow_origins=["*"],  # In production, specify your frontend URL
     allow_credentials=True,
-    allow_methods=["GET", "POST"],  # Only allow specific methods
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
@@ -58,12 +42,7 @@ class AnalysisResponse(BaseModel):
 
 @app.get("/")
 async def root():
-    return {"message": "Letter Analyzer API is running!", "status": "healthy"}
-
-@app.get("/health")
-async def health_check():
-    """Health check endpoint for monitoring"""
-    return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
+    return {"message": "Letter Analyzer API is running!"}
 
 @app.post("/analyze-letter", response_model=AnalysisResponse)
 async def analyze_letter(file: UploadFile = File(...)):
@@ -71,117 +50,99 @@ async def analyze_letter(file: UploadFile = File(...)):
     Analyze a letter image and extract key information
     """
     try:
-        # Validate file size
+        # Read the uploaded file
         contents = await file.read()
-        if len(contents) > config.MAX_FILE_SIZE:
-            raise HTTPException(status_code=413, detail="File too large")
-        
-        # Validate file type
-        if not file.content_type or not file.content_type.startswith('image/'):
-            raise HTTPException(status_code=400, detail="File must be an image")
-        
-        logger.info(f"Processing file: {file.filename}, size: {len(contents)} bytes")
         
         # Convert to base64
         base64_image = base64.b64encode(contents).decode('utf-8')
         data_url = f"data:{file.content_type};base64,{base64_image}"
         
-        # Check API key
-        if not config.OPENROUTER_API_KEY:
-            logger.error("OpenRouter API key not configured")
-            raise HTTPException(status_code=500, detail="API configuration error")
+        # Get API key from environment
+        api_key = os.getenv("OPENROUTER_API_KEY")
+        if not api_key:
+            raise HTTPException(status_code=500, detail="OpenRouter API key not configured")
         
         # Make request to OpenRouter API
-        headers = {
-            "Authorization": f"Bearer {config.OPENROUTER_API_KEY}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": config.SITE_URL,
-            "X-Title": config.SITE_NAME,
-        }
-        
-        payload = {
-            "model": "mistralai/mistral-small-3.2-24b-instruct:free",
-            "messages": [
-                {
-                    "role": "system",
-                    "content": """You are an AI assistant that reads letters from images and helps users quickly understand and act on them.
-
-                    Your task is to extract and summarize the key information from the input letter image and return a structured response with the following sections:
-                    
-                    1. Summary: A concise, plain-language summary of the letter (maximum 2 lines).
-                    2. Highlights: A bullet list of the most important facts or statements extracted from the letter.
-                    3. What To Do: A list of actions the user needs to take, based on the letter's content (if any).
-                    4. Important Dates: Extract any dates mentioned in the letter. For each, add a very short (1-line) description of its significance.
-                    5. Email Prompt (if relevant): If the letter mentions someone the user should reply to via email, include:
-                       > "Would you like me to write an email to [name/email]?"
-                    
-                    Use plain, helpful language. Be precise, but avoid copying long text from the letter.
-                    
-                    If the image is unclear or not a letter, say so politely.
-                    
-                    Structure your response exactly as follows:
-                    
-                    **Summary:**  
-                    <2-line plain-language summary>
-                    
-                    **Highlights:**  
-                    - <fact 1>  
-                    - <fact 2>  
-                    ...
-                    
-                    **What To Do:**  
-                    - <action 1>  
-                    ...
-                    
-                    **Important Dates:**  
-                    - <Date>: <short description>
-                    
-                    **Email Prompt:**  
-                    Would you like me to write an email to [name/email]?
-                    
-                    If a section does not apply, simply omit it.
-                    """
-                },
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": "Please analyze this letter and give a clear summary, important info, and actions needed."
-                        },
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": data_url
-                            }
-                        }
-                    ]
-                }
-            ],
-        }
-        
         response = requests.post(
             url="https://openrouter.ai/api/v1/chat/completions",
-            headers=headers,
-            data=json.dumps(payload),
-            timeout=30  # Add timeout
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": os.getenv("OPENROUTER_SITE_URL", "https://letter-analyzer.vercel.app"),
+                "X-Title": os.getenv("OPENROUTER_SITE_NAME", "Letter Analyzer"),
+            },
+            data=json.dumps({
+                "model": "mistralai/mistral-small-3.2-24b-instruct:free",
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": """You are an AI assistant that reads letters from images and helps users quickly understand and act on them.
+
+                        Your task is to extract and summarize the key information from the input letter image and return a structured response with the following sections:
+                        
+                        1. Summary: A concise, plain-language summary of the letter (maximum 2 lines).
+                        2. Highlights: A bullet list of the most important facts or statements extracted from the letter.
+                        3. What To Do: A list of actions the user needs to take, based on the letter's content (if any).
+                        4. Important Dates: Extract any dates mentioned in the letter. For each, add a very short (1-line) description of its significance.
+                        5. Email Prompt (if relevant): If the letter mentions someone the user should reply to via email, include:
+                           > "Would you like me to write an email to [name/email]?"
+                        
+                        Use plain, helpful language. Be precise, but avoid copying long text from the letter.
+                        
+                        If the image is unclear or not a letter, say so politely.
+                        
+                        Structure your response exactly as follows:
+                        
+                        **Summary:**  
+                        <2-line plain-language summary>
+                        
+                        **Highlights:**  
+                        - <fact 1>  
+                        - <fact 2>  
+                        ...
+                        
+                        **What To Do:**  
+                        - <action 1>  
+                        ...
+                        
+                        **Important Dates:**  
+                        - <Date>: <short description>
+                        
+                        **Email Prompt:**  
+                        Would you like me to write an email to [name/email]?
+                        
+                        If a section does not apply, simply omit it.
+                        """
+                    },
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": "Please analyze this letter and give a clear summary, important info, and actions needed."
+                            },
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": data_url
+                                }
+                            }
+                        ]
+                    }
+                ],
+            })
         )
         
         if response.status_code == 200:
             message = response.json()["choices"][0]["message"]["content"]
-            logger.info("Successfully analyzed letter")
             
             # Parse the response into structured format
             return parse_ai_response(message)
         else:
-            logger.error(f"OpenRouter API error: {response.status_code} - {response.text}")
-            raise HTTPException(status_code=response.status_code, detail="AI analysis failed")
+            raise HTTPException(status_code=response.status_code, detail=f"OpenRouter API error: {response.text}")
             
-    except HTTPException:
-        raise
     except Exception as e:
-        logger.error(f"Error analyzing letter: {str(e)}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail=f"Error analyzing letter: {str(e)}")
 
 def parse_ai_response(response_text: str) -> AnalysisResponse:
     """
@@ -235,4 +196,4 @@ def parse_ai_response(response_text: str) -> AnalysisResponse:
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8000) 
